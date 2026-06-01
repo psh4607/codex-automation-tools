@@ -1,0 +1,36 @@
+{
+  "name": "codex-automation-tools",
+  "version": "0.1.0",
+  "description": "Local Codex automation authoring guardrails and workspace helpers.",
+  "author": {
+    "name": "Seongho",
+    "url": "https://github.com/psh4607"
+  },
+  "homepage": "https://github.com/psh4607/codex-automation-tools",
+  "repository": "https://github.com/psh4607/codex-automation-tools",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "automation",
+    "skills",
+    "guardrails"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Automation Tools",
+    "shortDescription": "Create automations with local scripts and guardrails.",
+    "longDescription": "Codex Automation Tools adds a skill and helper script for keeping personal automation scripts, structured inputs, templates, and runbooks under each ~/.codex/automations/<id> directory.",
+    "developerName": "Seongho",
+    "category": "Productivity",
+    "capabilities": [
+      "Automation",
+      "Local scripts",
+      "Guardrails"
+    ],
+    "defaultPrompt": [
+      "Create this automation with a local script workspace.",
+      "Add guardrails to this Codex automation.",
+      "Scaffold scripts for an existing automation."
+    ]
+  }
+}
