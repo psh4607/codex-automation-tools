@@ -211,6 +211,75 @@ def placeholder_readme(title: str, body: Iterable[str]) -> str:
     return "\n".join(lines)
 
 
+def ssot_contract_template(automation_id: str, script_name: str) -> str:
+    return json.dumps(
+        {
+            "automationId": automation_id,
+            "scriptName": script_name,
+            "sourceOfTruth": {
+                "codebase": {
+                    "kind": "git-checkout",
+                    "rule": "Treat the live checkout and git SHA as canonical. Cached maps are derived artifacts.",
+                    "artifactRequirements": ["sourceGitSha", "generatedAt"],
+                },
+                "environment": {
+                    "kind": "runtime-environment",
+                    "rule": "Treat runtime env, ignored local env files, or secret-manager references as canonical. Store key names and requirements only.",
+                },
+                "database": {
+                    "kind": "live-service",
+                    "rule": "Treat the live DB and migration/schema source as canonical. Store redacted summaries only.",
+                },
+                "automationWorkspace": {
+                    "kind": "derived-context",
+                    "rule": "Use data, history, and artifacts for non-secret contracts, redacted evidence, and generated outputs.",
+                },
+            },
+        },
+        indent=2,
+        sort_keys=True,
+    ) + "\n"
+
+
+def secret_contract_template(automation_id: str, script_name: str) -> str:
+    return json.dumps(
+        {
+            "automationId": automation_id,
+            "scriptName": script_name,
+            "policy": {
+                "storeSecretValues": False,
+                "storeConnectionStrings": False,
+                "storeRawEnvFiles": False,
+                "storePrivateKeys": False,
+                "printSecretValues": False,
+            },
+            "allowedContext": {
+                "requiredEnvKeys": [],
+                "secretReferences": [],
+                "redactedVerificationResults": [],
+            },
+            "retrieval": {
+                "preferred": [
+                    "runtime-env",
+                    "ignored-local-env-file",
+                    "secret-manager-reference",
+                    "os-keychain-reference",
+                ],
+                "encryptedBlobs": {
+                    "allowedOnlyWhenKeyIsOutsideAutomationWorkspace": True,
+                    "note": "If an unattended automation can decrypt a blob, the decrypt key is the real secret boundary.",
+                },
+            },
+            "minimumAccess": {
+                "database": "read-only unless explicitly approved",
+                "externalApis": "least-privilege token scope",
+            },
+        },
+        indent=2,
+        sort_keys=True,
+    ) + "\n"
+
+
 def prepare_workspace(
     *,
     root: Path = DEFAULT_ROOT,
@@ -257,6 +326,17 @@ def prepare_workspace(
         created, path = write_file(
             script_dir / dirname / "README.md",
             placeholder_readme(title, body),
+            force=force,
+        )
+        (created_files if created else existing_files).append(path)
+
+    for filename, content in [
+        ("ssot-contract.json", ssot_contract_template(automation_id, script_name)),
+        ("secret-contract.json", secret_contract_template(automation_id, script_name)),
+    ]:
+        created, path = write_file(
+            script_dir / "data" / filename,
+            content,
             force=force,
         )
         (created_files if created else existing_files).append(path)

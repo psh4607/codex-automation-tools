@@ -42,13 +42,20 @@ class PrepareAutomationWorkspaceTest(unittest.TestCase):
 
             script = script_dir / "main.mjs"
             test_file = script_dir / "main.test.mjs"
+            ssot_contract = script_dir / "data" / "ssot-contract.json"
+            secret_contract = script_dir / "data" / "secret-contract.json"
             self.assertTrue(script.exists())
             self.assertTrue(test_file.exists())
+            self.assertTrue(ssot_contract.exists())
+            self.assertTrue(secret_contract.exists())
             self.assertIn("export function main", script.read_text())
             self.assertIn("daily-report-check", script.read_text())
             self.assertIn("artifactsDir", script.read_text())
             self.assertIn("historyDir", script.read_text())
             self.assertIn("templatesDir", script.read_text())
+            secret_payload = json.loads(secret_contract.read_text())
+            self.assertEqual(secret_payload["policy"]["storeSecretValues"], False)
+            self.assertNotIn("password", secret_contract.read_text().lower())
             self.assertEqual(result["script_dir"], str(script_dir))
 
     def test_does_not_overwrite_existing_script_by_default(self):

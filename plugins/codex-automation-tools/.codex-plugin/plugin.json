@@ -1,6 +1,6 @@
 {
   "name": "codex-automation-tools",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Local Codex automation authoring guardrails and workspace helpers.",
   "author": {
     "name": "Seongho",

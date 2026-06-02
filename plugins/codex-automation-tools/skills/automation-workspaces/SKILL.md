@@ -20,6 +20,8 @@ For personal Codex automations, keep durable implementation assets with the auto
       main.test.mjs
       README.md
       data/
+        ssot-contract.json
+        secret-contract.json
       templates/
       history/
       artifacts/
@@ -47,7 +49,8 @@ python3 <plugin-root>/scripts/prepare_automation_workspace.py <automation-id> --
 5. Put deterministic work in `scripts/<script-name>/main.mjs` or `main.py` and keep tests beside it. Every new cron/workspace automation should get at least one helper entrypoint, even if the first version only validates inputs and emits structured metadata.
 6. Put structured non-secret inputs in `scripts/<script-name>/data/`, reusable output bodies in `scripts/<script-name>/templates/`, run history in `scripts/<script-name>/history/`, and generated durable outputs in `scripts/<script-name>/artifacts/`.
 7. Put automation-level runbooks and design notes in `docs/`.
-8. Update the automation prompt to call helper scripts by absolute path, then reason over their structured output.
+8. Keep source-of-truth and sensitive-context rules in `scripts/<script-name>/data/ssot-contract.json` and `secret-contract.json`.
+9. Update the automation prompt to call helper scripts by absolute path, then reason over their structured output.
 
 ## What Belongs In Scripts
 
@@ -65,6 +68,17 @@ Move behavior into scripts when it is repeated, high-risk, or should not depend 
 
 Keep Codex prompt reasoning for ambiguous classification, final summary writing, and explicit tradeoff decisions.
 
+## SSOT And Sensitive Context
+
+Store context contracts, not secret values:
+
+- Codebase SSOT: the live git checkout and git SHA. Cached codebase maps are derived artifacts and must include the source git SHA.
+- Env SSOT: runtime env, ignored local env files, OS keychain entries, or secret-manager references. Store required key names and retrieval methods only.
+- DB SSOT: the live DB plus migration/schema source. Store read-only checks and redacted schema summaries only.
+- Automation workspace: derived context, run history, and generated artifacts. It is not the canonical source for secrets or code.
+
+Encrypted secret blobs are only useful when the decrypt key stays outside the automation workspace. If an unattended automation can decrypt a blob, the decrypt key is the real secret boundary. Prefer secret references and runtime injection over encrypted values stored beside the automation.
+
 ## Prompt Contract
 
 When an automation uses a helper, the prompt should say:
@@ -74,7 +88,9 @@ When an automation uses a helper, the prompt should say:
 - Read the helper's JSON/Markdown output instead of reimplementing collection logic ad hoc.
 - Write run history to `/Users/seongho/.codex/automations/<automation-id>/scripts/<script-name>/history/`.
 - Write generated reports, drafts, payloads, screenshots, and other durable outputs to `/Users/seongho/.codex/automations/<automation-id>/scripts/<script-name>/artifacts/`.
+- Keep required env names, secret references, DB access mode, and source-of-truth rules in `data/ssot-contract.json` and `data/secret-contract.json`.
 - Do not print secrets or auth tokens.
+- Do not store raw env files, full connection strings, private keys, tokens, cookies, or decrypted secret values in data, history, artifacts, logs, or prompts.
 - Do not bypass create caps, dedupe, or guardrail failures.
 
 ## Verification
