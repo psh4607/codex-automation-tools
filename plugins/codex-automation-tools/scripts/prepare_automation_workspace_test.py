@@ -37,25 +37,38 @@ class PrepareAutomationWorkspaceTest(unittest.TestCase):
                 self.assertTrue((automation_dir / dirname).is_dir(), dirname)
 
             script_dir = automation_dir / "scripts" / "run-check"
-            for dirname in ["artifacts", "history", "tmp", "logs", "data", "templates"]:
+            for dirname in ["artifacts", "history", "tmp", "logs", "context", "memory"]:
                 self.assertTrue((script_dir / dirname).is_dir(), dirname)
 
             script = script_dir / "main.mjs"
             test_file = script_dir / "main.test.mjs"
-            ssot_contract = script_dir / "data" / "ssot-contract.json"
-            secret_contract = script_dir / "data" / "secret-contract.json"
+            context_files = [
+                "automation.json",
+                "repo.json",
+                "codebase.json",
+                "env.json",
+                "db.json",
+                "integrations.json",
+            ]
             self.assertTrue(script.exists())
             self.assertTrue(test_file.exists())
-            self.assertTrue(ssot_contract.exists())
-            self.assertTrue(secret_contract.exists())
+            for filename in context_files:
+                self.assertTrue((script_dir / "context" / filename).exists(), filename)
+            self.assertTrue((script_dir / "memory" / "decisions.md").exists())
+            self.assertTrue((script_dir / "memory" / "assumptions.md").exists())
+            self.assertTrue((script_dir / "history" / "runs.jsonl").exists())
+            self.assertTrue((script_dir / "artifacts" / "latest-result.json").exists())
             self.assertIn("export function main", script.read_text())
             self.assertIn("daily-report-check", script.read_text())
             self.assertIn("artifactsDir", script.read_text())
             self.assertIn("historyDir", script.read_text())
-            self.assertIn("templatesDir", script.read_text())
-            secret_payload = json.loads(secret_contract.read_text())
-            self.assertEqual(secret_payload["policy"]["storeSecretValues"], False)
-            self.assertNotIn("password", secret_contract.read_text().lower())
+            self.assertIn("contextDir", script.read_text())
+            self.assertIn("memoryDir", script.read_text())
+            env_payload = json.loads((script_dir / "context" / "env.json").read_text())
+            self.assertEqual(env_payload["policy"]["storeSecretValues"], False)
+            self.assertEqual(env_payload["policy"]["storeRawEnvFiles"], False)
+            db_payload = json.loads((script_dir / "context" / "db.json").read_text())
+            self.assertEqual(db_payload["defaultAccessMode"], "read-only")
             self.assertEqual(result["script_dir"], str(script_dir))
 
     def test_does_not_overwrite_existing_script_by_default(self):
@@ -113,6 +126,8 @@ class PrepareAutomationWorkspaceTest(unittest.TestCase):
 
             self.assertEqual(payload["scriptName"], "run-check")
             self.assertTrue(payload["paths"]["artifactsDir"].endswith("/artifacts"))
+            self.assertTrue(payload["paths"]["contextDir"].endswith("/context"))
+            self.assertTrue(payload["paths"]["memoryDir"].endswith("/memory"))
 
 
 if __name__ == "__main__":

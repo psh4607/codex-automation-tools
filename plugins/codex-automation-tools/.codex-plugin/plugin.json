@@ -1,7 +1,7 @@
 {
   "name": "codex-automation-tools",
-  "version": "0.1.2",
-  "description": "Local Codex automation authoring guardrails and workspace helpers.",
+  "version": "0.2.0",
+  "description": "Local Codex automation context bootstrapping and workspace helpers.",
   "author": {
     "name": "Seongho",
     "url": "https://github.com/psh4607"
@@ -18,19 +18,19 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Automation Tools",
-    "shortDescription": "Create automations with local scripts and guardrails.",
-    "longDescription": "Codex Automation Tools adds a skill and helper script for keeping personal automation scripts, structured inputs, templates, and runbooks under each ~/.codex/automations/<id> directory.",
+    "shortDescription": "Create automations with reusable local context.",
+    "longDescription": "Codex Automation Tools adds a skill and helper script for bootstrapping personal automation workspaces with script-local context, memory, history, artifacts, and safe secret-reference policies.",
     "developerName": "Seongho",
     "category": "Productivity",
     "capabilities": [
       "Automation",
       "Local scripts",
-      "Guardrails"
+      "Context"
     ],
     "defaultPrompt": [
-      "Create this automation with a local script workspace.",
-      "Add guardrails to this Codex automation.",
-      "Scaffold scripts for an existing automation."
+      "Create this automation with reusable context.",
+      "Bootstrap context for an existing automation.",
+      "Scaffold a context-aware automation helper."
     ]
   }
 }

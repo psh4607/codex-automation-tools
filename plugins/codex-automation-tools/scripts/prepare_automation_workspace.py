@@ -11,7 +11,7 @@ from typing import Iterable
 
 DEFAULT_ROOT = Path.home() / ".codex" / "automations"
 STANDARD_DIRS = ("scripts", "docs")
-SCRIPT_WORKSPACE_DIRS = ("artifacts", "history", "tmp", "logs", "data", "templates")
+SCRIPT_WORKSPACE_DIRS = ("artifacts", "history", "tmp", "logs", "context", "memory")
 SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
@@ -46,8 +46,8 @@ const scriptDir = dirname(fileURLToPath(import.meta.url))
 export function workspacePaths() {{
   return {{
     scriptDir,
-    dataDir: join(scriptDir, 'data'),
-    templatesDir: join(scriptDir, 'templates'),
+    contextDir: join(scriptDir, 'context'),
+    memoryDir: join(scriptDir, 'memory'),
     historyDir: join(scriptDir, 'history'),
     artifactsDir: join(scriptDir, 'artifacts'),
     tmpDir: join(scriptDir, 'tmp'),
@@ -84,6 +84,8 @@ test('returns automation metadata', () => {{
   assert.equal(result.scriptName, {script_name!r})
   assert.equal(result.status, 'bootstrap')
   assert.deepEqual(result.args, ['--json'])
+  assert.equal(result.paths.contextDir, workspacePaths().contextDir)
+  assert.equal(result.paths.memoryDir, workspacePaths().memoryDir)
   assert.equal(result.paths.artifactsDir, workspacePaths().artifactsDir)
   assert.equal(result.paths.historyDir, workspacePaths().historyDir)
 }})
@@ -103,8 +105,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 def workspace_paths():
     return {{
         'scriptDir': str(SCRIPT_DIR),
-        'dataDir': str(SCRIPT_DIR / 'data'),
-        'templatesDir': str(SCRIPT_DIR / 'templates'),
+        'contextDir': str(SCRIPT_DIR / 'context'),
+        'memoryDir': str(SCRIPT_DIR / 'memory'),
         'historyDir': str(SCRIPT_DIR / 'history'),
         'artifactsDir': str(SCRIPT_DIR / 'artifacts'),
         'tmpDir': str(SCRIPT_DIR / 'tmp'),
@@ -155,6 +157,8 @@ def test_main_returns_bootstrap_metadata():
 
     assert result['scriptName'] == {script_name!r}
     assert result['status'] == 'bootstrap'
+    assert result['paths']['contextDir'] == module.workspace_paths()['contextDir']
+    assert result['paths']['memoryDir'] == module.workspace_paths()['memoryDir']
     assert result['paths']['artifactsDir'] == module.workspace_paths()['artifactsDir']
     assert result['paths']['historyDir'] == module.workspace_paths()['historyDir']
 """
@@ -169,12 +173,12 @@ This directory belongs to the Codex automation `{automation_id}`.
 ## Layout
 
 - `automation.toml`: scheduler metadata managed by Codex.
-- `scripts/{script_name}/`: deterministic helper workspace for this script.
+- `scripts/{script_name}/`: deterministic helper and context workspace for this script.
 - `docs/`: runbooks and design notes for this automation.
 
 ## Primary Helper
 
-Start with `scripts/{script_name}/{entrypoint}` and keep repeated or guardrail behavior in code.
+Start with `scripts/{script_name}/{entrypoint}` and keep repeated work, guardrails, and context refresh behavior in code.
 The automation prompt should call helpers by absolute path and then use their structured output.
 """
 
@@ -191,16 +195,24 @@ This directory is the workspace for one automation helper script.
 - `{entrypoint}`: script logic and guardrails.
 - `{test_file}`: focused tests for this helper.
 
+## Context
+
+- `context/automation.json`: purpose, expected outputs, and action policy.
+- `context/repo.json`: target repositories, worktree preference, and repo-local scope.
+- `context/codebase.json`: live-read vs snapshot strategy and stale-cache rules.
+- `context/env.json`: required env key names and secret retrieval policy, without values.
+- `context/db.json`: DB need, read-only mode, allowed checks, and redacted summary policy.
+- `context/integrations.json`: GitHub, Sentry, Slack, Notion, and other external systems.
+
 ## Local State
 
 - `history/`: append-only run summaries and decision records.
 - `artifacts/`: generated reports, payloads, drafts, screenshots, and other durable outputs.
 - `tmp/`: scratch files safe to regenerate.
 - `logs/`: local execution logs when needed for debugging.
-- `data/`: non-secret structured inputs and stable mappings for this helper.
-- `templates/`: reusable markdown, issue, report, or message templates for this helper.
+- `memory/`: durable decisions and assumptions used by this helper.
 
-Automation prompts should call this helper by absolute path and should not scatter artifacts outside this directory unless explicitly required.
+Automation prompts should call this helper by absolute path, read context before acting, and should not scatter artifacts outside this directory unless explicitly required.
 """
 
 
@@ -211,73 +223,150 @@ def placeholder_readme(title: str, body: Iterable[str]) -> str:
     return "\n".join(lines)
 
 
-def ssot_contract_template(automation_id: str, script_name: str) -> str:
-    return json.dumps(
+def json_template(payload: dict) -> str:
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def automation_context_template(automation_id: str, script_name: str) -> str:
+    return json_template(
         {
             "automationId": automation_id,
             "scriptName": script_name,
-            "sourceOfTruth": {
-                "codebase": {
-                    "kind": "git-checkout",
-                    "rule": "Treat the live checkout and git SHA as canonical. Cached maps are derived artifacts.",
-                    "artifactRequirements": ["sourceGitSha", "generatedAt"],
-                },
-                "environment": {
-                    "kind": "runtime-environment",
-                    "rule": "Treat runtime env, ignored local env files, or secret-manager references as canonical. Store key names and requirements only.",
-                },
-                "database": {
-                    "kind": "live-service",
-                    "rule": "Treat the live DB and migration/schema source as canonical. Store redacted summaries only.",
-                },
-                "automationWorkspace": {
-                    "kind": "derived-context",
-                    "rule": "Use data, history, and artifacts for non-secret contracts, redacted evidence, and generated outputs.",
-                },
+            "purpose": "",
+            "expectedOutputs": [],
+            "actionPolicy": {
+                "defaultMode": "report-or-draft",
+                "allowedActions": [],
+                "requiresExplicitApprovalFor": ["code changes", "database writes", "destructive operations"],
             },
-        },
-        indent=2,
-        sort_keys=True,
-    ) + "\n"
+            "questionsToResolveAtCreation": [
+                "What should this automation accomplish?",
+                "What output should it leave after each run?",
+                "Which actions may it perform without asking again?",
+            ],
+        }
+    )
 
 
-def secret_contract_template(automation_id: str, script_name: str) -> str:
+def repo_context_template(automation_id: str, script_name: str) -> str:
+    return json_template(
+        {
+            "automationId": automation_id,
+            "scriptName": script_name,
+            "primaryRepo": None,
+            "targetRepos": [],
+            "worktree": {
+                "default": "follow-user-or-repo-policy",
+                "notes": [],
+            },
+            "repoLocalFiles": [],
+            "questionsToResolveAtCreation": [
+                "Which repo or repos does this automation target?",
+                "Should it use the current checkout, a worktree, or read-only inspection?",
+                "Which app, package, module, or path is in scope?",
+            ],
+        }
+    )
+
+
+def codebase_context_template(automation_id: str, script_name: str) -> str:
+    return json_template(
+        {
+            "automationId": automation_id,
+            "scriptName": script_name,
+            "sourceOfTruth": "live-git-checkout",
+            "strategy": "live-read",
+            "snapshot": {
+                "enabled": False,
+                "artifactPath": "artifacts/codebase-map.json",
+                "staleWhen": ["git-sha-changed", "tracked-files-hash-changed"],
+            },
+            "questionsToResolveAtCreation": [
+                "Should the automation read the live codebase every run?",
+                "Should it maintain a snapshot or codebase map artifact?",
+                "What makes cached codebase context stale?",
+            ],
+        }
+    )
+
+
+def env_context_template(automation_id: str, script_name: str) -> str:
     return json.dumps(
         {
             "automationId": automation_id,
             "scriptName": script_name,
+            "sourceOfTruth": ["runtime-env", "ignored-local-env-file", "os-keychain-reference", "secret-manager-reference"],
+            "requiredKeys": [],
+            "optionalKeys": [],
             "policy": {
                 "storeSecretValues": False,
-                "storeConnectionStrings": False,
                 "storeRawEnvFiles": False,
-                "storePrivateKeys": False,
                 "printSecretValues": False,
+                "recordPresenceOnly": True,
             },
-            "allowedContext": {
-                "requiredEnvKeys": [],
-                "secretReferences": [],
-                "redactedVerificationResults": [],
-            },
-            "retrieval": {
-                "preferred": [
-                    "runtime-env",
-                    "ignored-local-env-file",
-                    "secret-manager-reference",
-                    "os-keychain-reference",
-                ],
-                "encryptedBlobs": {
-                    "allowedOnlyWhenKeyIsOutsideAutomationWorkspace": True,
-                    "note": "If an unattended automation can decrypt a blob, the decrypt key is the real secret boundary.",
-                },
-            },
-            "minimumAccess": {
-                "database": "read-only unless explicitly approved",
-                "externalApis": "least-privilege token scope",
-            },
+            "questionsToResolveAtCreation": [
+                "Which env key names does this automation need?",
+                "Where should those keys be read from at runtime?",
+                "Which env keys are required vs optional?",
+            ],
         },
         indent=2,
         sort_keys=True,
     ) + "\n"
+
+
+def db_context_template(automation_id: str, script_name: str) -> str:
+    return json_template(
+        {
+            "automationId": automation_id,
+            "scriptName": script_name,
+            "needed": False,
+            "sourceOfTruth": "live-db-and-migration-source",
+            "defaultAccessMode": "read-only",
+            "connection": {
+                "source": "runtime-env-or-secret-reference",
+                "storeConnectionStrings": False,
+            },
+            "allowedChecks": [],
+            "summaryArtifacts": {
+                "schemaSummary": "artifacts/db-schema-summary.json",
+                "latestCheck": "artifacts/db-latest-check.json",
+            },
+            "questionsToResolveAtCreation": [
+                "Does this automation need DB context?",
+                "Is read-only summary enough?",
+                "Which checks are allowed?",
+            ],
+        }
+    )
+
+
+def integrations_context_template(automation_id: str, script_name: str) -> str:
+    return json_template(
+        {
+            "automationId": automation_id,
+            "scriptName": script_name,
+            "systems": [],
+            "knownSystems": ["GitHub", "Sentry", "Slack", "Notion", "Linear", "Vercel", "Cloudflare"],
+            "policy": {
+                "leastPrivilege": True,
+                "storeTokens": False,
+                "preferDraftsBeforeWrites": True,
+            },
+            "questionsToResolveAtCreation": [
+                "Which external systems does this automation use?",
+                "May it create or update objects there?",
+                "What identifiers should it remember without storing credentials?",
+            ],
+        }
+    )
+
+
+def markdown_template(title: str, body: Iterable[str]) -> str:
+    lines = [f"# {title}", ""]
+    lines.extend(body)
+    lines.append("")
+    return "\n".join(lines)
 
 
 def prepare_workspace(
@@ -318,8 +407,8 @@ def prepare_workspace(
     (created_files if created else existing_files).append(path)
 
     for dirname, title, body in [
-        ("data", "Data", ["Keep non-secret JSON/YAML inputs here."]),
-        ("templates", "Templates", ["Keep reusable issue, report, and message templates here."]),
+        ("context", "Context", ["Keep automation bootstrap answers and reusable context contracts here."]),
+        ("memory", "Memory", ["Keep durable decisions and assumptions used by this helper here."]),
         ("history", "History", ["Keep append-only run summaries and decision records here."]),
         ("artifacts", "Artifacts", ["Keep generated durable outputs here."]),
     ]:
@@ -331,15 +420,48 @@ def prepare_workspace(
         (created_files if created else existing_files).append(path)
 
     for filename, content in [
-        ("ssot-contract.json", ssot_contract_template(automation_id, script_name)),
-        ("secret-contract.json", secret_contract_template(automation_id, script_name)),
+        ("automation.json", automation_context_template(automation_id, script_name)),
+        ("repo.json", repo_context_template(automation_id, script_name)),
+        ("codebase.json", codebase_context_template(automation_id, script_name)),
+        ("env.json", env_context_template(automation_id, script_name)),
+        ("db.json", db_context_template(automation_id, script_name)),
+        ("integrations.json", integrations_context_template(automation_id, script_name)),
     ]:
         created, path = write_file(
-            script_dir / "data" / filename,
+            script_dir / "context" / filename,
             content,
             force=force,
         )
         (created_files if created else existing_files).append(path)
+
+    for filename, content in [
+        ("decisions.md", markdown_template("Decisions", ["Record durable choices this automation should reuse."])),
+        ("assumptions.md", markdown_template("Assumptions", ["Record assumptions to verify or revisit during future runs."])),
+    ]:
+        created, path = write_file(
+            script_dir / "memory" / filename,
+            content,
+            force=force,
+        )
+        (created_files if created else existing_files).append(path)
+
+    created, path = write_file(script_dir / "history" / "runs.jsonl", "", force=force)
+    (created_files if created else existing_files).append(path)
+
+    created, path = write_file(
+        script_dir / "artifacts" / "latest-result.json",
+        json_template(
+            {
+                "automationId": automation_id,
+                "scriptName": script_name,
+                "status": "bootstrap",
+                "generatedAt": None,
+                "summary": None,
+            }
+        ),
+        force=force,
+    )
+    (created_files if created else existing_files).append(path)
 
     if language == "node":
         script = script_dir / "main.mjs"

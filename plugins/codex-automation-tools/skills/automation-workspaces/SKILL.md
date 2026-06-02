@@ -19,17 +19,25 @@ For personal Codex automations, keep durable implementation assets with the auto
       main.mjs
       main.test.mjs
       README.md
-      data/
-        ssot-contract.json
-        secret-contract.json
-      templates/
+      context/
+        automation.json
+        repo.json
+        codebase.json
+        env.json
+        db.json
+        integrations.json
+      memory/
+        decisions.md
+        assumptions.md
       history/
+        runs.jsonl
       artifacts/
+        latest-result.json
       tmp/
       logs/
 ```
 
-Use repo files only when the script is a shared team-maintained tool. If it is private Codex automation behavior, keep it under the automation id. Script history and artifacts belong under the script workspace that produced them.
+Use repo files only when the script is a shared team-maintained tool. If it is private Codex automation behavior, keep it under the automation id. Script context, memory, history, and artifacts belong under the script workspace that uses them.
 
 ## Required Flow
 
@@ -47,10 +55,32 @@ python3 <plugin-root>/scripts/prepare_automation_workspace.py <automation-id> --
 ```
 
 5. Put deterministic work in `scripts/<script-name>/main.mjs` or `main.py` and keep tests beside it. Every new cron/workspace automation should get at least one helper entrypoint, even if the first version only validates inputs and emits structured metadata.
-6. Put structured non-secret inputs in `scripts/<script-name>/data/`, reusable output bodies in `scripts/<script-name>/templates/`, run history in `scripts/<script-name>/history/`, and generated durable outputs in `scripts/<script-name>/artifacts/`.
-7. Put automation-level runbooks and design notes in `docs/`.
-8. Keep source-of-truth and sensitive-context rules in `scripts/<script-name>/data/ssot-contract.json` and `secret-contract.json`.
-9. Update the automation prompt to call helper scripts by absolute path, then reason over their structured output.
+6. Ask the creation-time context questions and store answers in `scripts/<script-name>/context/*.json`.
+7. Put durable decisions and assumptions in `scripts/<script-name>/memory/`, run history in `scripts/<script-name>/history/runs.jsonl`, and generated durable outputs in `scripts/<script-name>/artifacts/`.
+8. Put automation-level runbooks and design notes in `docs/`.
+9. Update the automation prompt to call helper scripts by absolute path, read context first, then reason over their structured output.
+
+## Creation-Time Context Questions
+
+Ask only what is needed to make future automation runs self-sufficient:
+
+- What is this automation's purpose and expected output?
+- Which repo or repos does it target?
+- Which information is needed every run?
+- Should codebase context be read live, cached as a snapshot, or both?
+- Which env key names are required, and where should they be read from at runtime?
+- Is DB context needed, and is read-only summary enough?
+- Which external systems are involved: GitHub, Sentry, Slack, Notion, Linear, Vercel, Cloudflare, or others?
+- Which actions are allowed without asking again, and which require explicit approval?
+
+Store those answers in:
+
+- `context/automation.json` for purpose, outputs, and action policy.
+- `context/repo.json` for target repositories and repo-local scope.
+- `context/codebase.json` for live-read vs snapshot behavior.
+- `context/env.json` for env key names and runtime retrieval policy.
+- `context/db.json` for DB need, read-only mode, and allowed checks.
+- `context/integrations.json` for external systems and write permissions.
 
 ## What Belongs In Scripts
 
@@ -64,18 +94,19 @@ Move behavior into scripts when it is repeated, high-risk, or should not depend 
 - deterministic classification rules
 - markdown/JSON report generation
 - guardrail checks that should block unsafe writes
+- context refreshes
 - history entries and artifact writes
 
 Keep Codex prompt reasoning for ambiguous classification, final summary writing, and explicit tradeoff decisions.
 
-## SSOT And Sensitive Context
+## Source Of Truth And Sensitive Context
 
-Store context contracts, not secret values:
+Store reusable context, not secret values:
 
-- Codebase SSOT: the live git checkout and git SHA. Cached codebase maps are derived artifacts and must include the source git SHA.
-- Env SSOT: runtime env, ignored local env files, OS keychain entries, or secret-manager references. Store required key names and retrieval methods only.
-- DB SSOT: the live DB plus migration/schema source. Store read-only checks and redacted schema summaries only.
-- Automation workspace: derived context, run history, and generated artifacts. It is not the canonical source for secrets or code.
+- Codebase source of truth: the live git checkout and git SHA. Cached codebase maps are derived artifacts and must include the source git SHA.
+- Env source of truth: runtime env, ignored local env files, OS keychain entries, or secret-manager references. Store required key names and retrieval methods only.
+- DB source of truth: the live DB plus migration/schema source. Store read-only checks and redacted schema summaries only.
+- Automation workspace: durable context, decisions, assumptions, run history, and generated artifacts. It is not the canonical source for secrets or code.
 
 Encrypted secret blobs are only useful when the decrypt key stays outside the automation workspace. If an unattended automation can decrypt a blob, the decrypt key is the real secret boundary. Prefer secret references and runtime injection over encrypted values stored beside the automation.
 
@@ -85,12 +116,13 @@ When an automation uses a helper, the prompt should say:
 
 - Run `/Users/seongho/.codex/automations/<automation-id>/scripts/<script-name>/main.mjs` first for Node helpers, or `main.py` for Python helpers.
 - Treat script failure as a blocked run unless the prompt explicitly allows fallback.
+- Read `context/*.json` before asking the user for information already captured there.
 - Read the helper's JSON/Markdown output instead of reimplementing collection logic ad hoc.
 - Write run history to `/Users/seongho/.codex/automations/<automation-id>/scripts/<script-name>/history/`.
 - Write generated reports, drafts, payloads, screenshots, and other durable outputs to `/Users/seongho/.codex/automations/<automation-id>/scripts/<script-name>/artifacts/`.
-- Keep required env names, secret references, DB access mode, and source-of-truth rules in `data/ssot-contract.json` and `data/secret-contract.json`.
+- Keep repo, codebase, env, DB, and external-system context in `context/*.json`.
 - Do not print secrets or auth tokens.
-- Do not store raw env files, full connection strings, private keys, tokens, cookies, or decrypted secret values in data, history, artifacts, logs, or prompts.
+- Do not store raw env files, full connection strings, private keys, tokens, cookies, or decrypted secret values in context, memory, history, artifacts, logs, or prompts.
 - Do not bypass create caps, dedupe, or guardrail failures.
 
 ## Verification
