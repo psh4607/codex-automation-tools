@@ -7,6 +7,7 @@ It keeps automation-specific helper scripts and their local state under:
 ```text
 /Users/seongho/.codex/automations/<automation-id>/
   automation.toml
+  remote.json
   memory.md
   docs/
   scripts/
@@ -40,6 +41,8 @@ It keeps automation-specific helper scripts and their local state under:
 - Script-local `history/` and `artifacts/` directories so run records and generated outputs live beside the code that created them.
 - Script-local `context/` files so automations can reuse repo, codebase, env, DB, integration, action-policy, and output expectations without asking every run.
 - Script-local `memory/` files for durable decisions and assumptions.
+- Optional `remote.json` manifests for automations whose execution host is not the local Codex machine.
+- `manage_remote_automation.py` helper for remote install, uninstall, tombstone delete, and registry diff plans.
 - Guardrails for keeping private automation scripts out of team repositories unless they are intentionally shared.
 
 ## Install
@@ -105,6 +108,43 @@ This creates:
   logs/
 ```
 
+Remote scaffold example:
+
+```bash
+python3 plugins/codex-automation-tools/scripts/prepare_automation_workspace.py \
+  daily-report-check \
+  --script-name run-check \
+  --language node \
+  --title "Daily Report Check" \
+  --remote-host dalpha-mac
+```
+
+Remote automations should use a local Codex title prefixed with `[remote]`, for example `[remote] Daily Report Check`. The prefix is an operator signal: the automation definition may be visible locally, but the durable runtime is expected to live on the configured remote host.
+
+The remote scaffold creates `/Users/seongho/.codex/automations/<automation-id>/remote.json`. That file is a control-plane manifest, not a secret store. It records the host, remote root, scheduler type, reconcile interval, sync policy, and lifecycle policy.
+
+Remote lifecycle helper examples:
+
+```bash
+python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py install \
+  /Users/seongho/.codex/automations/daily-report-check
+
+python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py pause \
+  /Users/seongho/.codex/automations/daily-report-check
+
+python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py resume \
+  /Users/seongho/.codex/automations/daily-report-check
+
+python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py delete \
+  /Users/seongho/.codex/automations/daily-report-check
+
+python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py diff \
+  --desired desired-registry.json \
+  --actual actual-registry.json
+```
+
+`delete` writes a tombstone first. Remote reconcile should disable the scheduler and archive the workspace before purge. Missing-entry pruning is intentionally opt-in through `--prune-missing` so an incomplete registry snapshot does not delete healthy remote jobs.
+
 ## Repository Layout
 
 ```text
@@ -112,6 +152,8 @@ This creates:
 plugins/codex-automation-tools/
   .codex-plugin/plugin.json
   skills/automation-workspaces/SKILL.md
+  scripts/manage_remote_automation.py
+  scripts/manage_remote_automation_test.py
   scripts/prepare_automation_workspace.py
   scripts/prepare_automation_workspace_test.py
 ```
@@ -120,9 +162,12 @@ plugins/codex-automation-tools/
 
 ```bash
 python3 plugins/codex-automation-tools/scripts/prepare_automation_workspace_test.py
+python3 plugins/codex-automation-tools/scripts/manage_remote_automation_test.py
 python3 -m py_compile \
   plugins/codex-automation-tools/scripts/prepare_automation_workspace.py \
-  plugins/codex-automation-tools/scripts/prepare_automation_workspace_test.py
+  plugins/codex-automation-tools/scripts/prepare_automation_workspace_test.py \
+  plugins/codex-automation-tools/scripts/manage_remote_automation.py \
+  plugins/codex-automation-tools/scripts/manage_remote_automation_test.py
 ```
 
 ## Context Bootstrap
@@ -138,6 +183,19 @@ The plugin is centered on creation-time questions that future runs can reuse:
 - Which actions are allowed without asking again, and which require explicit approval?
 
 The answers are stored in `context/*.json` and can be refreshed by the helper script. The automation should use these files as durable context, while treating live git checkouts, runtime env, live DBs, and external systems as the source of truth.
+
+## Remote Runtime Model
+
+Codex native automation scheduling is local to the Codex machine. For automations that must continue while the local computer is off, use the remote model:
+
+- Local Codex remains the control plane and authoring surface.
+- The automation title must start with `[remote]`.
+- `remote.json` is the desired remote runtime manifest.
+- The remote host owns runtime `history/`, `artifacts/`, `tmp/`, and `logs/`.
+- The remote host should run reconcile every 6 hours by default, or daily for low-urgency jobs.
+- Pause disables the remote scheduler without deleting workspace state.
+- Delete writes a tombstone, disables the scheduler, archives the workspace, and purges only after the retention window.
+- Diff-based deletion is allowed only for `managedBy: codex-automation-tools` records and only when `--prune-missing` is explicitly enabled.
 
 ## Sensitive Context
 

@@ -12,6 +12,7 @@ For personal Codex automations, keep durable implementation assets with the auto
 ```text
 /Users/seongho/.codex/automations/<automation-id>/
   automation.toml
+  remote.json
   memory.md
   docs/
   scripts/
@@ -39,6 +40,8 @@ For personal Codex automations, keep durable implementation assets with the auto
 
 Use repo files only when the script is a shared team-maintained tool. If it is private Codex automation behavior, keep it under the automation id. Script context, memory, history, and artifacts belong under the script workspace that uses them.
 
+`remote.json` exists only for automations that should execute on a remote host. It is optional and should not be created for ordinary local Codex automations.
+
 ## Required Flow
 
 1. Inspect existing automations first and avoid duplicate automation ids.
@@ -52,6 +55,16 @@ Use repo files only when the script is a shared team-maintained tool. If it is p
 
 ```bash
 python3 <plugin-root>/scripts/prepare_automation_workspace.py <automation-id> --script-name <script-slug> --language node
+```
+
+For a remote-host automation, always prefix the automation title with `[remote]` and scaffold with a remote manifest:
+
+```bash
+python3 <plugin-root>/scripts/prepare_automation_workspace.py <automation-id> \
+  --script-name <script-slug> \
+  --language node \
+  --title "<human title>" \
+  --remote-host <ssh-host>
 ```
 
 5. Put deterministic work in `scripts/<script-name>/main.mjs` or `main.py` and keep tests beside it. Every new cron/workspace automation should get at least one helper entrypoint, even if the first version only validates inputs and emits structured metadata.
@@ -72,6 +85,7 @@ Ask only what is needed to make future automation runs self-sufficient:
 - Is DB context needed, and is read-only summary enough?
 - Which external systems are involved: GitHub, Sentry, Slack, Notion, Linear, Vercel, Cloudflare, or others?
 - Which actions are allowed without asking again, and which require explicit approval?
+- Does this need to keep running if the local Codex machine is off? If yes, use `[remote]` title and `remote.json`.
 
 Store those answers in:
 
@@ -99,6 +113,25 @@ Move behavior into scripts when it is repeated, high-risk, or should not depend 
 
 Keep Codex prompt reasoning for ambiguous classification, final summary writing, and explicit tradeoff decisions.
 
+## Remote Runtime
+
+Codex native automation scheduling is local. If the user wants execution to continue while this Mac is off, treat local Codex as the control plane and a remote host as the runtime:
+
+- Use an automation title starting with `[remote]`.
+- Keep the local desired runtime contract in `/Users/seongho/.codex/automations/<automation-id>/remote.json`.
+- Use `<plugin-root>/scripts/manage_remote_automation.py install <automation-dir>` to produce the remote install plan.
+- Use `<plugin-root>/scripts/manage_remote_automation.py pause <automation-dir>` and `resume <automation-dir>` to change desired scheduler state.
+- Use `<plugin-root>/scripts/manage_remote_automation.py delete <automation-dir>` to write a tombstone instead of immediately deleting state.
+- Use `<plugin-root>/scripts/manage_remote_automation.py diff --desired <desired-registry.json> --actual <actual-registry.json>` for remote reconcile decisions.
+- The remote host owns runtime `history/`, `artifacts/`, `tmp/`, and `logs/`; local sync should not overwrite them by default.
+
+Lifecycle policy:
+
+- Pause means stop or disable the remote scheduler while keeping workspace, context, memory, history, and artifacts.
+- Delete means write a tombstone, stop scheduler, archive workspace, and purge only after `lifecycle.purgeAfterDays`.
+- Missing desired-registry entries must not delete remote jobs by default. Only use `--prune-missing` for records with `managedBy: codex-automation-tools` when the desired registry is known complete.
+- Default remote reconcile cadence is 6 hours. Daily is acceptable for low-urgency automations.
+
 ## Source Of Truth And Sensitive Context
 
 Store reusable context, not secret values:
@@ -107,6 +140,7 @@ Store reusable context, not secret values:
 - Env source of truth: runtime env, ignored local env files, OS keychain entries, or secret-manager references. Store required key names and retrieval methods only.
 - DB source of truth: the live DB plus migration/schema source. Store read-only checks and redacted schema summaries only.
 - Automation workspace: durable context, decisions, assumptions, run history, and generated artifacts. It is not the canonical source for secrets or code.
+- Remote runtime manifest: desired scheduling and lifecycle state only. It is not a scheduler by itself and does not contain credentials.
 
 Encrypted secret blobs are only useful when the decrypt key stays outside the automation workspace. If an unattended automation can decrypt a blob, the decrypt key is the real secret boundary. Prefer secret references and runtime injection over encrypted values stored beside the automation.
 
@@ -124,6 +158,7 @@ When an automation uses a helper, the prompt should say:
 - Do not print secrets or auth tokens.
 - Do not store raw env files, full connection strings, private keys, tokens, cookies, or decrypted secret values in context, memory, history, artifacts, logs, or prompts.
 - Do not bypass create caps, dedupe, or guardrail failures.
+- For `[remote]` automations, do not claim the local Codex cron itself is the durable runtime. The durable runtime is the remote scheduler described by `remote.json`.
 
 ## Verification
 
@@ -132,5 +167,6 @@ Before handing back an automation change:
 - Run the helper's focused tests, for example `node --test /Users/seongho/.codex/automations/<id>/scripts/<script-name>/main.test.mjs`.
 - Run the helper in a dry or read-only mode if it supports one.
 - Re-read `automation.toml` and confirm the prompt references the final absolute helper path.
+- For `[remote]` automations, inspect `remote.json`, confirm the title prefix, and run the remote install/delete/diff plan command in dry JSON form before reporting the lifecycle change.
 
 If authentication or external API access is unavailable, report that as the blocker and leave drafts or structured output instead of creating tracker objects.

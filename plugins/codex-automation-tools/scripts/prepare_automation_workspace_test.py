@@ -129,6 +129,34 @@ class PrepareAutomationWorkspaceTest(unittest.TestCase):
             self.assertTrue(payload["paths"]["contextDir"].endswith("/context"))
             self.assertTrue(payload["paths"]["memoryDir"].endswith("/memory"))
 
+    def test_remote_host_creates_remote_manifest_and_title_prefix(self):
+        module = load_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = module.prepare_workspace(
+                root=Path(tmp),
+                automation_id="daily-report-check",
+                script_name="run-check",
+                language="node",
+                title="Daily Report Check",
+                remote_host="dalpha-mac",
+            )
+
+            automation_dir = Path(tmp) / "daily-report-check"
+            remote_manifest = automation_dir / "remote.json"
+            payload = json.loads(remote_manifest.read_text())
+
+            self.assertEqual(result["suggested_name"], "[remote] Daily Report Check")
+            self.assertEqual(result["remote_manifest"], str(remote_manifest))
+            self.assertEqual(payload["mode"], "remote-host")
+            self.assertEqual(payload["displayName"], "[remote] Daily Report Check")
+            self.assertEqual(payload["host"], "dalpha-mac")
+            self.assertEqual(payload["remoteRoot"], "~/.codex/remote-automations")
+            self.assertEqual(payload["scheduler"]["reconcileIntervalHours"], 6)
+            self.assertEqual(payload["lifecycle"]["deleteStrategy"], "tombstone")
+            self.assertEqual(payload["sync"]["history"], "remote-owned")
+            self.assertEqual(payload["sync"]["artifacts"], "remote-owned")
+
 
 if __name__ == "__main__":
     unittest.main()

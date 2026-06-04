@@ -23,6 +23,19 @@ def validate_segment(value: str, label: str) -> str:
     return value
 
 
+def remote_display_name(title: str | None, automation_id: str) -> str:
+    base = (title or automation_id).strip()
+    if not base:
+        base = automation_id
+    if base.lower().startswith("[remote]"):
+        return base
+    return f"[remote] {base}"
+
+
+def remote_join(root: str, *parts: str) -> str:
+    return "/".join([root.rstrip("/"), *parts])
+
+
 def write_file(path: Path, content: str, *, force: bool) -> tuple[bool, str]:
     if path.exists() and not force:
         return False, str(path)
@@ -362,6 +375,58 @@ def integrations_context_template(automation_id: str, script_name: str) -> str:
     )
 
 
+def remote_manifest_template(
+    *,
+    automation_id: str,
+    script_name: str,
+    title: str | None,
+    remote_host: str,
+    remote_root: str,
+    remote_scheduler: str,
+    remote_reconcile_interval_hours: int,
+    remote_purge_after_days: int,
+) -> str:
+    return json_template(
+        {
+            "schemaVersion": 1,
+            "managedBy": "codex-automation-tools",
+            "mode": "remote-host",
+            "automationId": automation_id,
+            "scriptName": script_name,
+            "displayName": remote_display_name(title, automation_id),
+            "status": "active",
+            "host": remote_host,
+            "remoteRoot": remote_root,
+            "remoteAutomationDir": remote_join(remote_root, "automations", automation_id),
+            "registry": {
+                "path": remote_join(remote_root, "registry.json"),
+                "recordPath": remote_join(remote_root, "registry", f"{automation_id}.json"),
+            },
+            "scheduler": {
+                "type": remote_scheduler,
+                "reconcileIntervalHours": remote_reconcile_interval_hours,
+            },
+            "lifecycle": {
+                "deleteStrategy": "tombstone",
+                "pauseStrategy": "disable-scheduler",
+                "archiveBeforePurge": True,
+                "purgeAfterDays": remote_purge_after_days,
+                "pruneMissing": False,
+            },
+            "sync": {
+                "docs": True,
+                "scripts": True,
+                "context": True,
+                "memory": True,
+                "history": "remote-owned",
+                "artifacts": "remote-owned",
+                "tmp": "remote-owned",
+                "logs": "remote-owned",
+            },
+        }
+    )
+
+
 def markdown_template(title: str, body: Iterable[str]) -> str:
     lines = [f"# {title}", ""]
     lines.extend(body)
@@ -376,6 +441,12 @@ def prepare_workspace(
     script_name: str,
     language: str = "node",
     force: bool = False,
+    title: str | None = None,
+    remote_host: str | None = None,
+    remote_root: str = "~/.codex/remote-automations",
+    remote_scheduler: str = "systemd-timer",
+    remote_reconcile_interval_hours: int = 6,
+    remote_purge_after_days: int = 14,
 ) -> dict:
     automation_id = validate_segment(automation_id, "automation_id")
     script_name = validate_segment(script_name, "script_name")
@@ -406,7 +477,7 @@ def prepare_workspace(
     )
     (created_files if created else existing_files).append(path)
 
-    for dirname, title, body in [
+    for dirname, readme_title, body in [
         ("context", "Context", ["Keep automation bootstrap answers and reusable context contracts here."]),
         ("memory", "Memory", ["Keep durable decisions and assumptions used by this helper here."]),
         ("history", "History", ["Keep append-only run summaries and decision records here."]),
@@ -414,7 +485,7 @@ def prepare_workspace(
     ]:
         created, path = write_file(
             script_dir / dirname / "README.md",
-            placeholder_readme(title, body),
+            placeholder_readme(readme_title, body),
             force=force,
         )
         (created_files if created else existing_files).append(path)
@@ -463,6 +534,28 @@ def prepare_workspace(
     )
     (created_files if created else existing_files).append(path)
 
+    remote_manifest_path: str | None = None
+    suggested_name = title or automation_id
+    if remote_host:
+        remote_manifest = automation_dir / "remote.json"
+        created, path = write_file(
+            remote_manifest,
+            remote_manifest_template(
+                automation_id=automation_id,
+                script_name=script_name,
+                title=title,
+                remote_host=remote_host,
+                remote_root=remote_root,
+                remote_scheduler=remote_scheduler,
+                remote_reconcile_interval_hours=remote_reconcile_interval_hours,
+                remote_purge_after_days=remote_purge_after_days,
+            ),
+            force=force,
+        )
+        (created_files if created else existing_files).append(path)
+        remote_manifest_path = path
+        suggested_name = remote_display_name(title, automation_id)
+
     if language == "node":
         script = script_dir / "main.mjs"
         test_file = script_dir / "main.test.mjs"
@@ -491,6 +584,8 @@ def prepare_workspace(
         "existing_files": existing_files,
         "script": str(script),
         "test": str(test_file),
+        "remote_manifest": remote_manifest_path,
+        "suggested_name": suggested_name,
     }
 
 
@@ -516,6 +611,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_ROOT,
         help="Automation root directory.",
     )
+    parser.add_argument("--title", help="Human-readable automation title.")
+    parser.add_argument("--remote-host", help="Remote host that should execute this automation.")
+    parser.add_argument(
+        "--remote-root",
+        default="~/.codex/remote-automations",
+        help="Remote automation root on the execution host.",
+    )
+    parser.add_argument(
+        "--remote-scheduler",
+        choices=("systemd-timer", "cron"),
+        default="systemd-timer",
+        help="Remote scheduler type.",
+    )
+    parser.add_argument(
+        "--remote-reconcile-interval-hours",
+        type=int,
+        default=6,
+        help="How often the remote host should reconcile registry state.",
+    )
+    parser.add_argument(
+        "--remote-purge-after-days",
+        type=int,
+        default=14,
+        help="Retention window before deleted remote workspaces are purged.",
+    )
     parser.add_argument("--force", action="store_true", help="Overwrite existing generated files.")
     return parser.parse_args(argv)
 
@@ -528,6 +648,12 @@ def main(argv: list[str] | None = None) -> int:
         script_name=args.script_name,
         language=args.language,
         force=args.force,
+        title=args.title,
+        remote_host=args.remote_host,
+        remote_root=args.remote_root,
+        remote_scheduler=args.remote_scheduler,
+        remote_reconcile_interval_hours=args.remote_reconcile_interval_hours,
+        remote_purge_after_days=args.remote_purge_after_days,
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
