@@ -145,6 +145,7 @@ Lifecycle policy:
 - Default remote reconcile cadence is 6 hours. Daily is acceptable for low-urgency automations.
 - `--execute` currently supports remote hosts configured with `scheduler: cron`. macOS hosts such as `dalpha-mac` should use `cron`.
 - Remote cron entries are wrapped in `codex-automation-tools:<automation-id>:run` and `codex-automation-tools:reconcile` marker blocks so pause/delete can remove only managed entries.
+- For Node helpers, the remote runner resolves Node from `CODEX_AUTOMATION_NODE`, `PATH`, nvm under `~/.nvm/versions/node`, `/opt/homebrew/bin/node`, or `/usr/local/bin/node` because cron and non-interactive SSH often have a minimal `PATH`.
 
 ## Source Of Truth And Sensitive Context
 

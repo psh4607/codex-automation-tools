@@ -49,4 +49,4 @@ python3 scripts/manage_remote_automation.py diff --desired desired.json --actual
 
 Deletes are tombstones first. Pruning jobs that are missing from the desired registry requires the explicit `--prune-missing` flag.
 
-`install --execute` installs `codex-automation-runner.py` on the remote host and writes scoped cron markers. It currently executes only hosts configured with `scheduler: cron`.
+`install --execute` installs `codex-automation-runner.py` on the remote host and writes scoped cron markers. It currently executes only hosts configured with `scheduler: cron`. For Node helpers, the runner resolves Node from `CODEX_AUTOMATION_NODE`, `PATH`, nvm, or common Homebrew install paths.

@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -206,6 +207,45 @@ rrule = "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=15"
         module = load_module()
 
         compile(module.REMOTE_RUNNER_SOURCE, "codex-automation-runner.py", "exec")
+
+    def test_remote_runner_resolves_node_from_env(self):
+        module = load_module()
+        namespace = {}
+        exec(module.REMOTE_RUNNER_SOURCE, namespace)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            node = Path(tmp) / "node"
+            node.write_text("#!/bin/sh\n")
+            node.chmod(0o755)
+            previous = os.environ.get("CODEX_AUTOMATION_NODE")
+            os.environ["CODEX_AUTOMATION_NODE"] = str(node)
+            try:
+                self.assertEqual(namespace["resolve_node"](), str(node))
+            finally:
+                if previous is None:
+                    os.environ.pop("CODEX_AUTOMATION_NODE", None)
+                else:
+                    os.environ["CODEX_AUTOMATION_NODE"] = previous
+
+    def test_remote_runner_uses_resolved_node_for_mjs_entrypoint(self):
+        module = load_module()
+        namespace = {}
+        exec(module.REMOTE_RUNNER_SOURCE, namespace)
+        namespace["resolve_node"] = lambda: "/tmp/custom-node"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            remote_root = Path(tmp)
+            script_dir = remote_root / "automations" / "node-smoke" / "scripts" / "run"
+            script_dir.mkdir(parents=True)
+            entrypoint = script_dir / "main.mjs"
+            entrypoint.write_text("console.log(JSON.stringify({ok: true}))\n")
+
+            _, _, command = namespace["entrypoint_for"](
+                remote_root,
+                {"automationId": "node-smoke", "scriptName": "run"},
+            )
+
+            self.assertEqual(command, ["/tmp/custom-node", str(entrypoint), "--json"])
 
     def test_execute_install_plan_includes_execute_actions_and_cron(self):
         module = load_module()

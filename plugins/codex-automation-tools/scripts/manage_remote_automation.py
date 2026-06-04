@@ -117,6 +117,39 @@ def append_jsonl(path: Path, payload) -> None:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
+def node_version_key(path: Path):
+    version = path.parents[1].name.removeprefix("v")
+    parts = []
+    for part in version.split("."):
+        try:
+            parts.append(int(part))
+        except ValueError:
+            parts.append(-1)
+    return parts
+
+
+def node_candidates():
+    configured = os.environ.get("CODEX_AUTOMATION_NODE")
+    if configured:
+        yield Path(configured).expanduser()
+    path_node = shutil.which("node")
+    if path_node:
+        yield Path(path_node)
+    nvm_root = Path.home() / ".nvm" / "versions" / "node"
+    if nvm_root.exists():
+        for node in sorted(nvm_root.glob("*/bin/node"), key=node_version_key, reverse=True):
+            yield node
+    yield Path("/opt/homebrew/bin/node")
+    yield Path("/usr/local/bin/node")
+
+
+def resolve_node() -> str:
+    for candidate in node_candidates():
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return "node"
+
+
 def entrypoint_for(remote_root: Path, record):
     automation_id = record["automationId"]
     script_name = record.get("scriptName") or "run"
@@ -126,7 +159,7 @@ def entrypoint_for(remote_root: Path, record):
     if python_entry.exists():
         return script_name, python_entry, [sys.executable, str(python_entry), "--json"]
     if node_entry.exists():
-        return script_name, node_entry, ["node", str(node_entry), "--json"]
+        return script_name, node_entry, [resolve_node(), str(node_entry), "--json"]
     raise FileNotFoundError(f"no supported entrypoint under {script_dir}")
 
 

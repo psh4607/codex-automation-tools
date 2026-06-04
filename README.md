@@ -45,7 +45,7 @@ It keeps automation-specific helper scripts and their local state under:
 - Optional `/Users/seongho/.codex/remote-hosts.json` registry generated from SSH config for known remote automation runners.
 - `manage_remote_hosts.py` helper for discovering SSH aliases, writing the host registry, and showing configured hosts.
 - `manage_remote_automation.py` helper for remote install, uninstall, run-once, status, reconcile, tombstone delete, and registry diff plans.
-- Remote cron executor that installs `codex-automation-runner.py` under the remote root and manages crontab entries with scoped markers.
+- Remote cron executor that installs `codex-automation-runner.py` under the remote root, resolves Node from `CODEX_AUTOMATION_NODE`, `PATH`, nvm, or Homebrew paths, and manages crontab entries with scoped markers.
 - Guardrails for keeping private automation scripts out of team repositories unless they are intentionally shared.
 
 ## Install
@@ -237,6 +237,7 @@ Codex native automation scheduling is local to the Codex machine. For automation
 - Diff-based deletion is allowed only for `managedBy: codex-automation-tools` records and only when `--prune-missing` is explicitly enabled.
 - `install --execute` syncs the automation workspace to the remote host, writes a registry record, installs a per-automation run cron entry, and installs a global reconcile cron entry.
 - `run-once --execute` executes the remote helper through the installed runner and writes script-local `history/runs.jsonl` plus `artifacts/latest-result.json`.
+- Node helpers do not require `node` to be on cron's minimal `PATH` if Node is available through `CODEX_AUTOMATION_NODE`, nvm under `~/.nvm/versions/node`, `/opt/homebrew/bin/node`, or `/usr/local/bin/node`.
 
 Remote host setup:
 
