@@ -44,7 +44,8 @@ It keeps automation-specific helper scripts and their local state under:
 - Optional `remote.json` manifests for automations whose execution host is not the local Codex machine.
 - Optional `/Users/seongho/.codex/remote-hosts.json` registry generated from SSH config for known remote automation runners.
 - `manage_remote_hosts.py` helper for discovering SSH aliases, writing the host registry, and showing configured hosts.
-- `manage_remote_automation.py` helper for remote install, uninstall, tombstone delete, and registry diff plans.
+- `manage_remote_automation.py` helper for remote install, uninstall, run-once, status, reconcile, tombstone delete, and registry diff plans.
+- Remote cron executor that installs `codex-automation-runner.py` under the remote root and manages crontab entries with scoped markers.
 - Guardrails for keeping private automation scripts out of team repositories unless they are intentionally shared.
 
 ## Install
@@ -143,6 +144,10 @@ Remote lifecycle helper examples:
 python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py install \
   /Users/seongho/.codex/automations/daily-report-check
 
+python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py install \
+  /Users/seongho/.codex/automations/daily-report-check \
+  --execute
+
 python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py pause \
   /Users/seongho/.codex/automations/daily-report-check
 
@@ -152,12 +157,26 @@ python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py resum
 python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py delete \
   /Users/seongho/.codex/automations/daily-report-check
 
+python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py run-once \
+  /Users/seongho/.codex/automations/daily-report-check \
+  --execute
+
+python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py status \
+  /Users/seongho/.codex/automations/daily-report-check \
+  --execute
+
+python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py reconcile \
+  /Users/seongho/.codex/automations/daily-report-check \
+  --execute
+
 python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py diff \
   --desired desired-registry.json \
   --actual actual-registry.json
 ```
 
 `delete` writes a tombstone first. Remote reconcile should disable the scheduler and archive the workspace before purge. Missing-entry pruning is intentionally opt-in through `--prune-missing` so an incomplete registry snapshot does not delete healthy remote jobs.
+
+`install --execute` requires `automation.toml` so the local RRULE can be converted to cron. Supported RRULE shapes are hourly intervals plus daily/weekly wall-clock schedules. The executor currently supports remote `scheduler: cron`; macOS hosts such as `dalpha-mac` should use `cron`, not `systemd-timer`.
 
 ## Repository Layout
 
@@ -216,6 +235,8 @@ Codex native automation scheduling is local to the Codex machine. For automation
 - Pause disables the remote scheduler without deleting workspace state.
 - Delete writes a tombstone, disables the scheduler, archives the workspace, and purges only after the retention window.
 - Diff-based deletion is allowed only for `managedBy: codex-automation-tools` records and only when `--prune-missing` is explicitly enabled.
+- `install --execute` syncs the automation workspace to the remote host, writes a registry record, installs a per-automation run cron entry, and installs a global reconcile cron entry.
+- `run-once --execute` executes the remote helper through the installed runner and writes script-local `history/runs.jsonl` plus `artifacts/latest-result.json`.
 
 Remote host setup:
 

@@ -1,6 +1,6 @@
 {
   "name": "codex-automation-tools",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Local and remote Codex automation context bootstrapping helpers.",
   "author": {
     "name": "Seongho",
@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Codex Automation Tools",
     "shortDescription": "Create automations with reusable local or remote context.",
-    "longDescription": "Codex Automation Tools adds skills and helper scripts for bootstrapping personal automation workspaces with script-local context, remote host registries, remote runtime manifests, memory, history, artifacts, and safe secret-reference policies.",
+    "longDescription": "Codex Automation Tools adds skills and helper scripts for bootstrapping personal automation workspaces with script-local context, remote host registries, executable remote cron runners, remote runtime manifests, memory, history, artifacts, and safe secret-reference policies.",
     "developerName": "Seongho",
     "category": "Productivity",
     "capabilities": [
@@ -28,12 +28,14 @@
       "Local scripts",
       "Context",
       "Remote hosts",
+      "Remote executor",
       "Remote runtime"
     ],
     "defaultPrompt": [
       "Create this automation with reusable context.",
       "Register a remote automation host from SSH config.",
       "Create this as a [remote] automation on a host.",
+      "Install this remote automation runner with cron.",
       "Bootstrap context for an existing automation.",
       "Scaffold a context-aware automation helper."
     ]

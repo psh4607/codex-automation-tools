@@ -149,6 +149,95 @@ class ManageRemoteAutomationTest(unittest.TestCase):
         self.assertEqual(diff["delete"], [])
         self.assertEqual(diff["purge"], ["daily-report-check"])
 
+    def test_rrule_to_cron_supports_weekly_and_hourly_schedules(self):
+        module = load_module()
+
+        self.assertEqual(
+            module.rrule_to_cron("FREQ=WEEKLY;BYDAY=MO,TU,TH;BYHOUR=10;BYMINUTE=30;BYSECOND=0"),
+            "30 10 * * 1,2,4",
+        )
+        self.assertEqual(module.rrule_to_cron("FREQ=HOURLY;INTERVAL=6"), "0 */6 * * *")
+
+    def test_load_automation_schedule_reads_toml_rrule(self):
+        module = load_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            automation_toml = Path(tmp) / "automation.toml"
+            automation_toml.write_text(
+                """
+id = "daily-report-check"
+rrule = "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=15"
+"""
+            )
+
+            self.assertEqual(module.load_automation_cron(Path(tmp)), "15 9 * * 1")
+
+    def test_cron_block_has_stable_markers_and_runner_command(self):
+        module = load_module()
+        manifest = {
+            "automationId": "daily-report-check",
+            "scriptName": "run",
+            "remoteRoot": "~/.codex/remote-automations",
+        }
+
+        block = module.build_run_cron_block(manifest, "15 9 * * 1")
+
+        self.assertIn("# codex-automation-tools:daily-report-check:run BEGIN", block)
+        self.assertIn("# codex-automation-tools:daily-report-check:run END", block)
+        self.assertIn("codex-automation-runner.py run", block)
+        self.assertIn("--automation-id daily-report-check", block)
+        self.assertIn("15 9 * * 1", block)
+
+    def test_replace_and_remove_cron_block_are_marker_scoped(self):
+        module = load_module()
+        original = "MAILTO=\"\"\n# other\n* * * * * echo keep\n"
+        block = "# codex-automation-tools:daily-report-check:run BEGIN\n0 * * * * echo run\n# codex-automation-tools:daily-report-check:run END"
+
+        updated = module.replace_cron_block(original, "daily-report-check:run", block)
+        replaced = module.replace_cron_block(updated, "daily-report-check:run", block.replace("0 *", "15 *"))
+        removed = module.remove_cron_block(replaced, "daily-report-check:run")
+
+        self.assertIn("echo keep", updated)
+        self.assertIn("15 * * * * echo run", replaced)
+        self.assertNotIn("daily-report-check:run", removed)
+        self.assertIn("echo keep", removed)
+
+    def test_remote_runner_source_compiles(self):
+        module = load_module()
+
+        compile(module.REMOTE_RUNNER_SOURCE, "codex-automation-runner.py", "exec")
+
+    def test_execute_install_plan_includes_execute_actions_and_cron(self):
+        module = load_module()
+        manifest = {
+            "automationId": "daily-report-check",
+            "displayName": "[remote] Daily Report Check",
+            "host": "dalpha-mac",
+            "remoteRoot": "~/.codex/remote-automations",
+            "scheduler": {"type": "cron", "reconcileIntervalHours": 6},
+            "status": "active",
+        }
+
+        plan = module.build_execute_install_plan(
+            Path("/tmp/local/daily-report-check"),
+            manifest,
+            cron_expression="15 9 * * 1",
+        )
+
+        self.assertEqual(
+            [action["kind"] for action in plan["actions"]],
+            [
+                "ensure-remote-root",
+                "install-runner",
+                "sync-automation",
+                "write-registry-record",
+                "install-run-cron",
+                "install-reconcile-cron",
+            ],
+        )
+        self.assertEqual(plan["actions"][4]["cron"], "15 9 * * 1")
+        self.assertEqual(plan["actions"][5]["cron"], "0 */6 * * *")
+
 
 if __name__ == "__main__":
     unittest.main()

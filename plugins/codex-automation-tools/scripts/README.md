@@ -37,10 +37,16 @@ This creates `remote.json` beside `automation.toml`. Manage remote lifecycle pla
 
 ```bash
 python3 scripts/manage_remote_automation.py install ~/.codex/automations/daily-report-check
+python3 scripts/manage_remote_automation.py install ~/.codex/automations/daily-report-check --execute
 python3 scripts/manage_remote_automation.py pause ~/.codex/automations/daily-report-check
 python3 scripts/manage_remote_automation.py resume ~/.codex/automations/daily-report-check
 python3 scripts/manage_remote_automation.py delete ~/.codex/automations/daily-report-check
+python3 scripts/manage_remote_automation.py run-once ~/.codex/automations/daily-report-check --execute
+python3 scripts/manage_remote_automation.py status ~/.codex/automations/daily-report-check --execute
+python3 scripts/manage_remote_automation.py reconcile ~/.codex/automations/daily-report-check --execute
 python3 scripts/manage_remote_automation.py diff --desired desired.json --actual actual.json
 ```
 
 Deletes are tombstones first. Pruning jobs that are missing from the desired registry requires the explicit `--prune-missing` flag.
+
+`install --execute` installs `codex-automation-runner.py` on the remote host and writes scoped cron markers. It currently executes only hosts configured with `scheduler: cron`.

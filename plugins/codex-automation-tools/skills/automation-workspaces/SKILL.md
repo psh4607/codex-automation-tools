@@ -128,6 +128,10 @@ Codex native automation scheduling is local. If the user wants execution to cont
 - Use `<plugin-root>/scripts/manage_remote_hosts.py discover --include <ssh-host>` to register a host from SSH config.
 - Use `<plugin-root>/scripts/manage_remote_hosts.py list` or `show <host>` before selecting a remote host for a new automation.
 - Use `<plugin-root>/scripts/manage_remote_automation.py install <automation-dir>` to produce the remote install plan.
+- Use `<plugin-root>/scripts/manage_remote_automation.py install <automation-dir> --execute` to sync the workspace, install the remote runner, and register cron entries.
+- Use `<plugin-root>/scripts/manage_remote_automation.py run-once <automation-dir> --execute` to verify the remote helper executes through the installed runner.
+- Use `<plugin-root>/scripts/manage_remote_automation.py status <automation-dir> --execute` to verify registry, workspace, run cron, and reconcile cron state.
+- Use `<plugin-root>/scripts/manage_remote_automation.py reconcile <automation-dir> --execute` to run the remote reconcile loop immediately.
 - Use `<plugin-root>/scripts/manage_remote_automation.py pause <automation-dir>` and `resume <automation-dir>` to change desired scheduler state.
 - Use `<plugin-root>/scripts/manage_remote_automation.py delete <automation-dir>` to write a tombstone instead of immediately deleting state.
 - Use `<plugin-root>/scripts/manage_remote_automation.py diff --desired <desired-registry.json> --actual <actual-registry.json>` for remote reconcile decisions.
@@ -139,6 +143,8 @@ Lifecycle policy:
 - Delete means write a tombstone, stop scheduler, archive workspace, and purge only after `lifecycle.purgeAfterDays`.
 - Missing desired-registry entries must not delete remote jobs by default. Only use `--prune-missing` for records with `managedBy: codex-automation-tools` when the desired registry is known complete.
 - Default remote reconcile cadence is 6 hours. Daily is acceptable for low-urgency automations.
+- `--execute` currently supports remote hosts configured with `scheduler: cron`. macOS hosts such as `dalpha-mac` should use `cron`.
+- Remote cron entries are wrapped in `codex-automation-tools:<automation-id>:run` and `codex-automation-tools:reconcile` marker blocks so pause/delete can remove only managed entries.
 
 ## Source Of Truth And Sensitive Context
 
@@ -178,5 +184,6 @@ Before handing back an automation change:
 - Re-read `automation.toml` and confirm the prompt references the final absolute helper path.
 - For `[remote]` automations, inspect `remote.json`, confirm the title prefix, and run the remote install/delete/diff plan command in dry JSON form before reporting the lifecycle change.
 - If `/Users/seongho/.codex/remote-hosts.json` exists, confirm the selected host is present and `remote.json.hostRegistry` points at it.
+- After `install --execute`, run `status --execute` and `run-once --execute`. For smoke tests, clean up test registry records, archives, and per-automation cron markers while leaving the global runner/reconcile setup when it is intentionally installed.
 
 If authentication or external API access is unavailable, report that as the blocker and leave drafts or structured output instead of creating tracker objects.
