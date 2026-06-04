@@ -42,6 +42,8 @@ It keeps automation-specific helper scripts and their local state under:
 - Script-local `context/` files so automations can reuse repo, codebase, env, DB, integration, action-policy, and output expectations without asking every run.
 - Script-local `memory/` files for durable decisions and assumptions.
 - Optional `remote.json` manifests for automations whose execution host is not the local Codex machine.
+- Optional `/Users/seongho/.codex/remote-hosts.json` registry generated from SSH config for known remote automation runners.
+- `manage_remote_hosts.py` helper for discovering SSH aliases, writing the host registry, and showing configured hosts.
 - `manage_remote_automation.py` helper for remote install, uninstall, tombstone delete, and registry diff plans.
 - Guardrails for keeping private automation scripts out of team repositories unless they are intentionally shared.
 
@@ -111,6 +113,10 @@ This creates:
 Remote scaffold example:
 
 ```bash
+python3 plugins/codex-automation-tools/scripts/manage_remote_hosts.py discover \
+  --include dalpha-mac \
+  --output /Users/seongho/.codex/remote-hosts.json
+
 python3 plugins/codex-automation-tools/scripts/prepare_automation_workspace.py \
   daily-report-check \
   --script-name run-check \
@@ -122,6 +128,14 @@ python3 plugins/codex-automation-tools/scripts/prepare_automation_workspace.py \
 Remote automations should use a local Codex title prefixed with `[remote]`, for example `[remote] Daily Report Check`. The prefix is an operator signal: the automation definition may be visible locally, but the durable runtime is expected to live on the configured remote host.
 
 The remote scaffold creates `/Users/seongho/.codex/automations/<automation-id>/remote.json`. That file is a control-plane manifest, not a secret store. It records the host, remote root, scheduler type, reconcile interval, sync policy, and lifecycle policy.
+
+The host registry is optional but recommended:
+
+```text
+/Users/seongho/.codex/remote-hosts.json
+```
+
+It is generated from `~/.ssh/config` plus `ssh -G <alias>` output. This validates the SSH alias without opening a remote shell and stores non-secret connection metadata such as hostname, user, port, identity-file path, proxy command, default remote root, scheduler, and reconcile cadence.
 
 Remote lifecycle helper examples:
 
@@ -152,6 +166,8 @@ python3 plugins/codex-automation-tools/scripts/manage_remote_automation.py diff 
 plugins/codex-automation-tools/
   .codex-plugin/plugin.json
   skills/automation-workspaces/SKILL.md
+  scripts/manage_remote_hosts.py
+  scripts/manage_remote_hosts_test.py
   scripts/manage_remote_automation.py
   scripts/manage_remote_automation_test.py
   scripts/prepare_automation_workspace.py
@@ -162,10 +178,13 @@ plugins/codex-automation-tools/
 
 ```bash
 python3 plugins/codex-automation-tools/scripts/prepare_automation_workspace_test.py
+python3 plugins/codex-automation-tools/scripts/manage_remote_hosts_test.py
 python3 plugins/codex-automation-tools/scripts/manage_remote_automation_test.py
 python3 -m py_compile \
   plugins/codex-automation-tools/scripts/prepare_automation_workspace.py \
   plugins/codex-automation-tools/scripts/prepare_automation_workspace_test.py \
+  plugins/codex-automation-tools/scripts/manage_remote_hosts.py \
+  plugins/codex-automation-tools/scripts/manage_remote_hosts_test.py \
   plugins/codex-automation-tools/scripts/manage_remote_automation.py \
   plugins/codex-automation-tools/scripts/manage_remote_automation_test.py
 ```
@@ -190,12 +209,23 @@ Codex native automation scheduling is local to the Codex machine. For automation
 
 - Local Codex remains the control plane and authoring surface.
 - The automation title must start with `[remote]`.
+- `/Users/seongho/.codex/remote-hosts.json` should contain the remote runner host when practical.
 - `remote.json` is the desired remote runtime manifest.
 - The remote host owns runtime `history/`, `artifacts/`, `tmp/`, and `logs/`.
 - The remote host should run reconcile every 6 hours by default, or daily for low-urgency jobs.
 - Pause disables the remote scheduler without deleting workspace state.
 - Delete writes a tombstone, disables the scheduler, archives the workspace, and purges only after the retention window.
 - Diff-based deletion is allowed only for `managedBy: codex-automation-tools` records and only when `--prune-missing` is explicitly enabled.
+
+Remote host setup:
+
+```bash
+python3 plugins/codex-automation-tools/scripts/manage_remote_hosts.py discover --include dalpha-mac
+python3 plugins/codex-automation-tools/scripts/manage_remote_hosts.py list
+python3 plugins/codex-automation-tools/scripts/manage_remote_hosts.py show dalpha-mac
+```
+
+`discover --include <ssh-alias>` fails if the alias is not present in `~/.ssh/config`, so a misspelled host is caught before an automation points at it.
 
 ## Sensitive Context
 

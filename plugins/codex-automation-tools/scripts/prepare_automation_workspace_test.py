@@ -157,6 +157,47 @@ class PrepareAutomationWorkspaceTest(unittest.TestCase):
             self.assertEqual(payload["sync"]["history"], "remote-owned")
             self.assertEqual(payload["sync"]["artifacts"], "remote-owned")
 
+    def test_remote_host_registry_overrides_runtime_defaults(self):
+        module = load_module()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = Path(tmp) / "remote-hosts.json"
+            registry.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "managedBy": "codex-automation-tools",
+                        "hosts": [
+                            {
+                                "id": "runner-1",
+                                "sshAlias": "dalpha-mac",
+                                "remoteRoot": "/srv/codex-remote",
+                                "scheduler": "cron",
+                                "reconcileIntervalHours": 24,
+                            }
+                        ],
+                    }
+                )
+            )
+
+            result = module.prepare_workspace(
+                root=Path(tmp) / "automations",
+                automation_id="daily-report-check",
+                script_name="run-check",
+                language="node",
+                title="Daily Report Check",
+                remote_host="runner-1",
+                remote_host_registry=registry,
+            )
+
+            payload = json.loads(Path(result["remote_manifest"]).read_text())
+            self.assertEqual(payload["host"], "dalpha-mac")
+            self.assertEqual(payload["hostId"], "runner-1")
+            self.assertEqual(payload["remoteRoot"], "/srv/codex-remote")
+            self.assertEqual(payload["scheduler"]["type"], "cron")
+            self.assertEqual(payload["scheduler"]["reconcileIntervalHours"], 24)
+            self.assertEqual(payload["hostRegistry"], str(registry))
+
 
 if __name__ == "__main__":
     unittest.main()

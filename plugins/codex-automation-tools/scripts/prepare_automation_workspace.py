@@ -10,6 +10,7 @@ from typing import Iterable
 
 
 DEFAULT_ROOT = Path.home() / ".codex" / "automations"
+DEFAULT_REMOTE_HOST_REGISTRY = Path.home() / ".codex" / "remote-hosts.json"
 STANDARD_DIRS = ("scripts", "docs")
 SCRIPT_WORKSPACE_DIRS = ("artifacts", "history", "tmp", "logs", "context", "memory")
 SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -34,6 +35,22 @@ def remote_display_name(title: str | None, automation_id: str) -> str:
 
 def remote_join(root: str, *parts: str) -> str:
     return "/".join([root.rstrip("/"), *parts])
+
+
+def load_remote_host_config(
+    remote_host: str,
+    registry_path: Path | None = DEFAULT_REMOTE_HOST_REGISTRY,
+) -> dict | None:
+    if registry_path is None:
+        return None
+    path = Path(registry_path).expanduser()
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text())
+    for host in payload.get("hosts", []):
+        if host.get("id") == remote_host or host.get("sshAlias") == remote_host:
+            return {**host, "registryPath": str(path)}
+    raise ValueError(f"remote host is not registered in {path}: {remote_host}")
 
 
 def write_file(path: Path, content: str, *, force: bool) -> tuple[bool, str]:
@@ -381,6 +398,8 @@ def remote_manifest_template(
     script_name: str,
     title: str | None,
     remote_host: str,
+    host_id: str | None,
+    host_registry: str | None,
     remote_root: str,
     remote_scheduler: str,
     remote_reconcile_interval_hours: int,
@@ -396,6 +415,8 @@ def remote_manifest_template(
             "displayName": remote_display_name(title, automation_id),
             "status": "active",
             "host": remote_host,
+            "hostId": host_id or remote_host,
+            "hostRegistry": host_registry,
             "remoteRoot": remote_root,
             "remoteAutomationDir": remote_join(remote_root, "automations", automation_id),
             "registry": {
@@ -443,10 +464,11 @@ def prepare_workspace(
     force: bool = False,
     title: str | None = None,
     remote_host: str | None = None,
-    remote_root: str = "~/.codex/remote-automations",
-    remote_scheduler: str = "systemd-timer",
-    remote_reconcile_interval_hours: int = 6,
+    remote_root: str | None = None,
+    remote_scheduler: str | None = None,
+    remote_reconcile_interval_hours: int | None = None,
     remote_purge_after_days: int = 14,
+    remote_host_registry: Path | None = DEFAULT_REMOTE_HOST_REGISTRY,
 ) -> dict:
     automation_id = validate_segment(automation_id, "automation_id")
     script_name = validate_segment(script_name, "script_name")
@@ -537,6 +559,17 @@ def prepare_workspace(
     remote_manifest_path: str | None = None
     suggested_name = title or automation_id
     if remote_host:
+        host_config = load_remote_host_config(remote_host, remote_host_registry)
+        manifest_host = host_config.get("sshAlias", remote_host) if host_config else remote_host
+        host_id = host_config.get("id", remote_host) if host_config else remote_host
+        host_registry = host_config.get("registryPath") if host_config else None
+        resolved_remote_root = remote_root or (host_config.get("remoteRoot") if host_config else None) or "~/.codex/remote-automations"
+        resolved_scheduler = remote_scheduler or (host_config.get("scheduler") if host_config else None) or "systemd-timer"
+        resolved_reconcile_interval_hours = (
+            remote_reconcile_interval_hours
+            or (host_config.get("reconcileIntervalHours") if host_config else None)
+            or 6
+        )
         remote_manifest = automation_dir / "remote.json"
         created, path = write_file(
             remote_manifest,
@@ -544,10 +577,12 @@ def prepare_workspace(
                 automation_id=automation_id,
                 script_name=script_name,
                 title=title,
-                remote_host=remote_host,
-                remote_root=remote_root,
-                remote_scheduler=remote_scheduler,
-                remote_reconcile_interval_hours=remote_reconcile_interval_hours,
+                remote_host=manifest_host,
+                host_id=host_id,
+                host_registry=host_registry,
+                remote_root=resolved_remote_root,
+                remote_scheduler=resolved_scheduler,
+                remote_reconcile_interval_hours=resolved_reconcile_interval_hours,
                 remote_purge_after_days=remote_purge_after_days,
             ),
             force=force,
@@ -615,20 +650,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--remote-host", help="Remote host that should execute this automation.")
     parser.add_argument(
         "--remote-root",
-        default="~/.codex/remote-automations",
+        default=None,
         help="Remote automation root on the execution host.",
     )
     parser.add_argument(
         "--remote-scheduler",
         choices=("systemd-timer", "cron"),
-        default="systemd-timer",
+        default=None,
         help="Remote scheduler type.",
     )
     parser.add_argument(
         "--remote-reconcile-interval-hours",
         type=int,
-        default=6,
+        default=None,
         help="How often the remote host should reconcile registry state.",
+    )
+    parser.add_argument(
+        "--remote-host-registry",
+        type=Path,
+        default=DEFAULT_REMOTE_HOST_REGISTRY,
+        help="Codex remote host registry JSON.",
     )
     parser.add_argument(
         "--remote-purge-after-days",
@@ -654,6 +695,7 @@ def main(argv: list[str] | None = None) -> int:
         remote_scheduler=args.remote_scheduler,
         remote_reconcile_interval_hours=args.remote_reconcile_interval_hours,
         remote_purge_after_days=args.remote_purge_after_days,
+        remote_host_registry=args.remote_host_registry,
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0

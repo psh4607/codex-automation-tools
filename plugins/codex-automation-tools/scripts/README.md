@@ -18,6 +18,14 @@ The `context/` directory starts with `automation.json`, `repo.json`, `codebase.j
 
 Use `--remote-host <ssh-host>` when the automation should be visible from local Codex but execute on a remote host. Remote automation titles should start with `[remote]`.
 
+First register the host from SSH config when practical:
+
+```bash
+python3 scripts/manage_remote_hosts.py discover --include dalpha-mac
+python3 scripts/manage_remote_hosts.py list
+python3 scripts/manage_remote_hosts.py show dalpha-mac
+```
+
 ```bash
 python3 scripts/prepare_automation_workspace.py daily-report-check \
   --script-name run-check \
