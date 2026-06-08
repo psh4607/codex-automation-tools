@@ -1,6 +1,6 @@
 {
   "name": "codex-automation-tools",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Local and remote Codex automation context bootstrapping helpers.",
   "author": {
     "name": "Seongho",
@@ -37,6 +37,7 @@
       "Create this as a [remote] automation on a host.",
       "Install this remote automation runner with cron.",
       "Bootstrap context for an existing automation.",
+      "Update an existing automation prompt or memory.",
       "Scaffold a context-aware automation helper."
     ]
   }

@@ -1,6 +1,6 @@
 ---
 name: automation-workspaces
-description: Use when creating or updating any Codex automation, recurring job, monitor, reminder, heartbeat, cron task, scheduled follow-up, or Korean "자동화" flow.
+description: Use when creating, updating, modifying, or hardening any Codex automation, automation.toml, prompt, memory.md, scripts, recurring job, monitor, reminder, heartbeat, cron task, scheduled follow-up, or Korean "자동화" / "자동화 수정" flow.
 ---
 
 # Automation Workspaces
@@ -76,6 +76,19 @@ The host discovery helper reads `~/.ssh/config`, validates the alias with `ssh -
 7. Put durable decisions and assumptions in `scripts/<script-name>/memory/`, run history in `scripts/<script-name>/history/runs.jsonl`, and generated durable outputs in `scripts/<script-name>/artifacts/`.
 8. Put automation-level runbooks and design notes in `docs/`.
 9. Update the automation prompt to call helper scripts by absolute path, read context first, then reason over their structured output.
+
+## Existing Automation Updates
+
+Use this skill even when no new automation is being created. Triggers include requests like "자동화 내용을 업데이트", "자동화 수정", "프롬프트 강화", "memory 갱신", changing an automation schedule, or editing `/Users/seongho/.codex/automations/<automation-id>/automation.toml`.
+
+For existing automation edits:
+
+1. Search for the `automation_update` tool first. If it is available, use its schema for create/update/delete operations.
+2. If the tool is unavailable or insufficient, edit the real automation files directly.
+3. Read `automation.toml`, root `memory.md`, and `scripts/*/{README.md,context,memory}` before changing behavior.
+4. If repeated or fragile prompt logic is being added, move it into `scripts/<script-name>/main.mjs` or `main.py` instead of only expanding the prompt.
+5. Update script-local `context/` or `memory/` when the edit changes durable assumptions, provider versions, target repos, schedules, action policy, or output contract.
+6. Re-read changed files and verify the next automation run will load the intended script/context/memory paths.
 
 ## Creation-Time Context Questions
 
