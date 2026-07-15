@@ -1,0 +1,16 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="background" x1="28" y1="24" x2="174" y2="180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF7A62"/>
+      <stop offset="1" stop-color="#FF536E"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="168" height="168" rx="44" fill="url(#background)"/>
+  <path d="M42 55C42 48.925 46.925 44 53 44H82V62C82 67.523 86.477 72 92 72H100V99H82V117H60C50.059 117 42 108.941 42 99V55Z" fill="#FFC928"/>
+  <circle cx="82" cy="88" r="14" fill="#FFC928"/>
+  <path d="M82 44H111C117.075 44 122 48.925 122 55V72H140C149.941 72 158 80.059 158 90V99H122V88C122 79.163 114.837 72 106 72H82V44Z" fill="#FF8A4C"/>
+  <path d="M122 72H147C153.075 72 158 76.925 158 83V117H140C134.477 117 130 121.477 130 127V135H100V117H111C117.075 117 122 112.075 122 106V72Z" fill="#FF587A"/>
+  <circle cx="145" cy="117" r="14" fill="#FF587A"/>
+  <path d="M100 99H130V117H122C116.477 117 112 121.477 112 127V156H83C76.925 156 72 151.075 72 145V117H82C91.941 117 100 108.941 100 99Z" fill="#FFCE2F"/>
+  <circle cx="100" cy="134" r="14" fill="#FFCE2F"/>
+</svg>

@@ -1,6 +1,6 @@
 {
   "name": "codex-automation-tools",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Local and remote Codex automation context bootstrapping helpers.",
   "author": {
     "name": "Seongho",
@@ -23,6 +23,9 @@
     "longDescription": "Codex Automation Tools adds skills and helper scripts for bootstrapping personal automation workspaces with script-local context, remote host registries, executable remote cron runners, remote runtime manifests, memory, history, artifacts, and safe secret-reference policies.",
     "developerName": "Seongho",
     "category": "Productivity",
+    "brandColor": "#FF5B69",
+    "composerIcon": "./assets/plugin-icon.svg",
+    "logo": "./assets/plugin-icon.svg",
     "capabilities": [
       "Automation",
       "Local scripts",
